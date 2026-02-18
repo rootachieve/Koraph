@@ -43,6 +43,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonMain.dependencies {
+            implementation(projects.graphVisualizer)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
@@ -88,4 +89,3 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
 }
-

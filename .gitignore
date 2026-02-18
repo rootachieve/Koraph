@@ -17,6 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+kotlin-js-store/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/kotlin,android,androidstudio
