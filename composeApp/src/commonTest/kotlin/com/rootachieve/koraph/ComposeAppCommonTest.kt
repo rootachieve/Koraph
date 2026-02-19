@@ -7,6 +7,14 @@ class ComposeAppCommonTest {
 
     @Test
     fun example() {
-        assertEquals(3, 1 + 2)
+        // given
+        val left = 1
+        val right = 2
+
+        // when
+        val result = left + right
+
+        // then
+        assertEquals(3, result)
     }
 }

@@ -1,63 +1,147 @@
-This is a Kotlin Multiplatform project targeting Android, iOS, Web.
+# Koraph
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-    folder is the appropriate location.
+[![](https://jitpack.io/v/rootachieve/Koraph.svg)](https://jitpack.io/#rootachieve/Koraph)
 
-* [/iosApp](./iosApp/iosApp) contains iOS applications. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+> Koraph is a Compose Multiplatform graph visualization library for turning adjacency maps into interactive node-link diagrams.
 
-### Build and Run Android Application
+Koraph is a Compose Multiplatform project that includes:
 
-To build and run the development version of the Android app, use the run configuration from the run widget
-in your IDE’s toolbar or build it directly from the terminal:
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:assembleDebug
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:assembleDebug
-  ```
+- `composeApp`: demo app for Android, iOS, JS, and Wasm
+- `graph-visualizer`: reusable graph visualization library (`Map<Key, List<Key>>` input)
 
-### Build and Run Web Application
+## Sample
 
-To build and run the development version of the web app, use the run configuration from the run widget
-in your IDE's toolbar or run it directly from the terminal:
-- for the Wasm target (faster, modern browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-- for the JS target (slower, supports older browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:jsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:jsBrowserDevelopmentRun
-    ```
+You can try the web sample app at:
+[https://rootachieve.github.io/Koraph/](https://rootachieve.github.io/Koraph/)
 
-### Build and Run iOS Application
+## Installation
 
-To build and run the development version of the iOS app, use the run configuration from the run widget
-in your IDE’s toolbar or open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+### Prerequisites
 
----
+- JDK 17+
+- Android Studio (or IntelliJ IDEA with Kotlin/Compose support)
+- Xcode (for iOS target)
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
+### Gradle
 
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).
+Assuming a release tag is already published to JitPack:
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
+```
+
+```kotlin
+// build.gradle.kts
+dependencies {
+    // all published modules (recommended for simple onboarding)
+    implementation("com.github.rootachieve:Koraph:<version>")
+}
+```
+### Build
+
+```bash
+./gradlew :graph-visualizer:allTests
+./gradlew :composeApp:assembleDebug
+```
+
+## Basic Usage
+
+Use `SimpleGraphVisualizer` for a quick start without manually creating full node metadata.
+
+```kotlin
+enum class NodeKey { Gateway, Search, Users }
+
+val adjacency = mapOf(
+    NodeKey.Gateway to listOf(NodeKey.Search, NodeKey.Users),
+    NodeKey.Search to listOf(NodeKey.Users),
+)
+
+SimpleGraphVisualizer(
+    adjacency = adjacency,
+    onSelectionChange = { selected ->
+        println("Selected node: ${selected?.name ?: "none"}")
+    },
+)
+```
+
+You can also apply lightweight per-node customization with `nodeInfoFactory`.
+
+```kotlin
+SimpleGraphVisualizer(
+    adjacency = adjacency,
+    nodeInfoFactory = { key ->
+        NodeInfo(
+            name = key.name,
+            size = if (key == NodeKey.Gateway) 24f else 18f,
+        )
+    },
+)
+```
+
+## Advanced Usage
+
+For full control, provide `nodeInfo`, tuned options, and custom style rules.
+
+```kotlin
+enum class NodeKey { Gateway, Search, Users, Alerts, Custom }
+
+val adjacency: Map<NodeKey, List<NodeKey>> = mapOf(
+    NodeKey.Gateway to listOf(NodeKey.Search, NodeKey.Alerts),
+    NodeKey.Search to listOf(NodeKey.Users),
+    NodeKey.Users to listOf(NodeKey.Gateway),
+)
+
+val nodeInfo: Map<NodeKey, NodeInfo> = mapOf(
+    NodeKey.Gateway to NodeInfo(name = "Gateway", style = NodeShape.RoundedRect, size = 24f),
+    NodeKey.Search to NodeInfo(name = "Search", style = NodeShape.Circle, size = 18f),
+    NodeKey.Users to NodeInfo(name = "Users", style = NodeShape.Hexagon, size = 20f),
+    NodeKey.Alerts to NodeInfo(name = "Alerts", style = NodeShape.Diamond, size = 22f),
+)
+
+GraphVisualizer(
+    adjacency = adjacency,
+    nodeInfo = nodeInfo,
+    options = GraphVisualizerOptions.presentation().copy(
+        interaction = GraphInteractionConfig(
+            minScale = 0.4f,
+            maxScale = 6f,
+            tapSelectionPadding = 12f,
+            clearSelectionOnBackgroundTap = false,
+        ),
+        label = GraphLabelConfig(widthDp = 120f, fontSizeSp = 13f),
+        layout = ForceLayoutConfig(centerTension = 0.035f),
+    ),
+    nodeStyle = { input ->
+        val info = input.nodeInfo
+        NodeStyle(
+            shape = info.style,
+            fillColor = when (input.selectionState) {
+                SelectionState.Selected -> info.selectedColor
+                SelectionState.OtherSelected -> Color(0xFFD1D5DB)
+                SelectionState.NoneSelected -> info.color
+            },
+            strokeColor = when (input.selectionState) {
+                SelectionState.Selected -> info.selectedStrokeColor
+                SelectionState.OtherSelected -> Color(0xFF6B7280)
+                SelectionState.NoneSelected -> info.strokeColor
+            },
+            radius = info.size,
+            labelColor = info.labelColor,
+        )
+    },
+)
+```
+
+More detailed advanced usage documentation will be added in a future docs update.
+
+## License
+
+Licensed under Apache-2.0. See [LICENSE](LICENSE).

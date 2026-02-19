@@ -1,0 +1,71 @@
+name: PR Library CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  library-ci:
+    name: library-ci
+    runs-on: ubuntu-latest
+
+    steps:
+      # 전체 히스토리까지 checkout
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # gradle 빌드에 사용할 JDK 버전 고정
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # JS/Wasm를 위한 Node 런타임 준비
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Android SDK 설치
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Gradle 캐시
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 테스트, 컴파일 검증
+      - name: Run library verification
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :graph-visualizer:testDebugUnitTest \
+            :graph-visualizer:compileKotlinMetadata \
+            :graph-visualizer:compileKotlinJs \
+            :graph-visualizer:compileKotlinWasmJs
+
+      # 실패 시 테스트리포트 업로드
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graph-visualizer-test-reports
+          if-no-files-found: ignore
+          path: |
+            graph-visualizer/build/reports/tests/**
+            graph-visualizer/build/test-results/**
