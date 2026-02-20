@@ -37,7 +37,7 @@ jobs:
 
   release-cd:
     name: release-cd
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
 
@@ -70,40 +70,25 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 테스트, 컴파일 검증 및 aar 생성
-      - name: Verify and build release AAR
+      # 테스트 및 컴파일 검증
+      - name: Verify release build
         run: |
           ./gradlew --no-daemon --stacktrace \
             :graph-visualizer:testDebugUnitTest \
             :graph-visualizer:compileKotlinMetadata \
             :graph-visualizer:compileKotlinJs \
-            :graph-visualizer:compileKotlinWasmJs \
-            :graph-visualizer:assembleRelease
+            :graph-visualizer:compileKotlinWasmJs
 
-      # 생성된 release AAR를 릴리즈 업로드용 이름으로 정리
-      - name: Prepare release asset
+      # Maven Central(Sonatype)로 publish
+      - name: Publish and release to Maven Central
         env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
-          set -euo pipefail
-
-          input_aar="graph-visualizer/build/outputs/aar/graph-visualizer-release.aar"
-          if [ ! -f "${input_aar}" ]; then
-            echo "Missing release AAR: ${input_aar}" >&2
-            exit 1
-          fi
-
-          mkdir -p dist
-          output_aar="dist/graph-visualizer-${VERSION}.aar"
-          cp "${input_aar}" "${output_aar}"
-
-      # 생성된 GitHub Release에 AAR 파일 첨부
-      - name: Upload assets to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-          VERSION: ${{ needs.release-please.outputs.version }}
-        run: |
-          gh release upload "${TAG}" \
-            "dist/graph-visualizer-${VERSION}.aar" \
-            --clobber
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            -Pversion="${VERSION}" \
+            :graph-visualizer:publishAndReleaseToMavenCentral
