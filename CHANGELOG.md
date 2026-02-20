@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/rootachieve/Koraph/compare/v1.0.0...v1.0.1) (2026-02-20)
+
+
+### Bug Fixes
+
+* change the deployment method to maven central ([707be12](https://github.com/rootachieve/Koraph/commit/707be12537febed60647282b14c7960f22ddee64))
+
 ## 1.0.0 (2026-02-19)
 
 
