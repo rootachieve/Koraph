@@ -1,6 +1,8 @@
 # Koraph
 
-[![](https://jitpack.io/v/rootachieve/Koraph.svg)](https://jitpack.io/#rootachieve/Koraph)
+![Image](https://github.com/user-attachments/assets/a33957e1-f4bc-429e-a9ff-c58f99fe1187)
+
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.rootachieve/Koraph)](https://central.sonatype.com/artifact/io.github.rootachieve/Koraph)
 
 > Koraph is a Compose Multiplatform graph visualization library for turning adjacency maps into interactive node-link diagrams.
 
@@ -24,7 +26,7 @@ You can try the web sample app at:
 
 ### Gradle
 
-Assuming a release tag is already published to JitPack:
+Koraph releases are published to Maven Central:
 
 ```kotlin
 // settings.gradle.kts
@@ -33,7 +35,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io")
     }
 }
 ```
@@ -41,8 +42,7 @@ dependencyResolutionManagement {
 ```kotlin
 // build.gradle.kts
 dependencies {
-    // all published modules (recommended for simple onboarding)
-    implementation("com.github.rootachieve:Koraph:<version>")
+    implementation("io.github.rootachieve:Koraph:<version>")
 }
 ```
 ### Build
