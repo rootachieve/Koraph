@@ -140,7 +140,7 @@ GraphVisualizer(
 )
 ```
 
-More detailed advanced usage documentation will be added in a future docs update.
+More detailed advanced usage documentation will be added in a future docs update. 
 
 ## License
 
