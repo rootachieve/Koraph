@@ -6,6 +6,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -16,12 +20,19 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -192,9 +203,14 @@ fun <K> GraphVisualizer(
             fitToBounds = options.fitToViewport,
         )
     }
-    val projectedPositions = remember(animatedWorldPositions, baseTransform, state.scale, state.offset) {
+    val nodeWorldDragOffsets = remember(signature) { mutableStateMapOf<Int, Offset>() }
+    val draggedWorldPositions = applyWorldDragOffsets(
+        basePositions = animatedWorldPositions,
+        dragOffsets = nodeWorldDragOffsets,
+    )
+    val projectedPositions = remember(draggedWorldPositions, baseTransform, state.scale, state.offset) {
         projectPositions(
-            positions = animatedWorldPositions,
+            positions = draggedWorldPositions,
             baseTransform = baseTransform,
             state = state,
         )
@@ -215,6 +231,19 @@ fun <K> GraphVisualizer(
         val appearance = nodeAppearanceScale(entryProgress)
         nodeRadii.map { radius -> radius * appearance }
     }
+    val dragProjectionScale = remember(baseTransform.baseScale, state.scale) {
+        (baseTransform.baseScale * state.scale).coerceAtLeast(minimumDragProjectionScale)
+    }
+    val dragProjectedPositionsState = rememberUpdatedState(renderedPositions)
+    val dragNodeRadiiState = rememberUpdatedState(renderedNodeRadii)
+    val dragProjectionScaleState = rememberUpdatedState(dragProjectionScale)
+    val nodeKeysState = rememberUpdatedState(graphModel.nodeKeys)
+    val dragBaseWorldPositionsState = rememberUpdatedState(animatedWorldPositions)
+    val dragLayoutEdgesState = rememberUpdatedState(layoutEdges)
+    val dragLayoutConfigState = rememberUpdatedState(options.layout)
+    val dragLayoutNodeRadiiState = rememberUpdatedState(layoutNodeRadii)
+    val dragKeepPhysicsState = rememberUpdatedState(interaction.keepLayoutPhysicsOnNodeDrag)
+    val dragPhysicsIterationsState = rememberUpdatedState(interaction.resolvedDragPhysicsIterationsPerStep)
 
     var interactionModifier: Modifier = Modifier
     if (options.enablePanZoom) {
@@ -228,6 +257,65 @@ fun <K> GraphVisualizer(
                     maxScale = interaction.resolvedMaxScale,
                 )
             }
+        }
+    }
+    if (options.enableNodeDrag) {
+        val hitPadding = interaction.resolvedTapSelectionPadding
+        interactionModifier = interactionModifier.pointerInput(
+            options.enableNodeDrag,
+            signature,
+            interaction,
+        ) {
+            detectNodeDragGestures(
+                findDraggableNode = { pointerOffset ->
+                    val projectedPositions = dragProjectedPositionsState.value
+                    val nodeRadii = dragNodeRadiiState.value
+                    findNodeAt(
+                        pointerPosition = pointerOffset,
+                        projectedPositions = projectedPositions,
+                        radiusProvider = { nodeId ->
+                            nodeRadii.getOrElse(nodeId) { 12f } + hitPadding
+                        },
+                    )
+                },
+                onNodeDragStart = { nodeId ->
+                    state.updateSelectedNodeId(nodeId)
+                    onSelectionChange(nodeKeysState.value.getOrNull(nodeId))
+                },
+                onNodeDrag = { nodeId, dragAmount ->
+                    val projectionScale = dragProjectionScaleState.value
+                    val worldDelta = Offset(
+                        x = dragAmount.x / projectionScale,
+                        y = dragAmount.y / projectionScale,
+                    )
+                    if (!dragKeepPhysicsState.value) {
+                        val currentOffset = nodeWorldDragOffsets[nodeId] ?: Offset.Zero
+                        nodeWorldDragOffsets[nodeId] = currentOffset + worldDelta
+                    } else {
+                        val basePositions = dragBaseWorldPositionsState.value
+                        val currentWorldPositions = applyWorldDragOffsets(
+                            basePositions = basePositions,
+                            dragOffsets = nodeWorldDragOffsets,
+                        )
+                        if (nodeId in currentWorldPositions.indices) {
+                            val draggedPositions = currentWorldPositions.toMutableList()
+                            draggedPositions[nodeId] = draggedPositions[nodeId] + worldDelta
+                            val relaxedPositions = relaxLayoutFromCurrentPositions(
+                                positions = draggedPositions,
+                                edges = dragLayoutEdgesState.value,
+                                config = dragLayoutConfigState.value,
+                                nodeRadii = dragLayoutNodeRadiiState.value,
+                                pinnedNodeIds = setOf(nodeId),
+                                iterations = dragPhysicsIterationsState.value,
+                            )
+                            nodeWorldDragOffsets.clear()
+                            relaxedPositions.forEachIndexed { index, relaxedPosition ->
+                                nodeWorldDragOffsets[index] = relaxedPosition - basePositions[index]
+                            }
+                        }
+                    }
+                },
+            )
         }
     }
     if (options.enableTapSelection) {
@@ -323,6 +411,20 @@ fun <K> GraphVisualizer(
     }
 }
 
+private const val minimumDragProjectionScale: Float = 0.01f
+
+private fun applyWorldDragOffsets(
+    basePositions: List<Offset>,
+    dragOffsets: Map<Int, Offset>,
+): List<Offset> {
+    if (dragOffsets.isEmpty()) {
+        return basePositions
+    }
+    return basePositions.mapIndexed { nodeId, position ->
+        position + (dragOffsets[nodeId] ?: Offset.Zero)
+    }
+}
+
 private fun <K> collectAllNodeKeys(adjacency: Map<K, List<K>>): List<K> {
     val ordered = linkedSetOf<K>()
     adjacency.forEach { (from, neighbors) ->
@@ -381,6 +483,48 @@ private fun <K> buildRenderPriority(
         backgroundNodeIndices = backgroundNodeIndices,
         foregroundNodeIndices = foregroundNodeIndices,
     )
+}
+
+private suspend fun PointerInputScope.detectNodeDragGestures(
+    findDraggableNode: (Offset) -> Int?,
+    onNodeDragStart: (Int) -> Unit = {},
+    onNodeDrag: (nodeId: Int, dragAmount: Offset) -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val nodeId = findDraggableNode(down.position) ?: return@awaitEachGesture
+        val dragStart = if (down.type == PointerType.Mouse) {
+            down
+        } else {
+            awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+        }
+
+        var hasDragged = false
+        val endedByUp = drag(dragStart.id) { change ->
+            val dragAmount = change.positionChange()
+            if (hasDragged) {
+                if (dragAmount != Offset.Zero) {
+                    onNodeDrag(nodeId, dragAmount)
+                }
+                change.consume()
+                return@drag
+            }
+            if (dragAmount != Offset.Zero) {
+                hasDragged = true
+                onNodeDragStart(nodeId)
+                onNodeDrag(nodeId, dragAmount)
+                change.consume()
+            }
+        }
+
+        if (hasDragged && endedByUp) {
+            currentEvent.changes.forEach { change ->
+                if (change.changedToUp()) {
+                    change.consume()
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -624,13 +768,18 @@ private fun GraphLabels(
         if (labelText.isBlank()) {
             return@forEachIndexed
         }
-        BasicText(
-            text = labelText,
-            style = TextStyle(
+        val resolvedTextStyle = config.textStyle.merge(
+            TextStyle(
                 color = style.labelColor,
                 fontSize = fontSize,
                 textAlign = TextAlign.Center,
             ),
+        )
+        BasicText(
+            text = labelText,
+            style = resolvedTextStyle,
+            maxLines = config.maxLines,
+            overflow = config.overflow,
             modifier = Modifier
                 .alpha(alpha)
                 .offset {
