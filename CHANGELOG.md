@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/rootachieve/Koraph/compare/v1.0.1...v1.1.0) (2026-03-03)
+
+
+### Features
+
+* Add node drag support ([637e978](https://github.com/rootachieve/Koraph/commit/637e9785a1e49f92b4ad2e8b0584c37b5da8b33f))
+* turn the sample screen into a visualizer playground ([d3d901e](https://github.com/rootachieve/Koraph/commit/d3d901e99433c1065d006f1fea90e3e623975d18))
+
+
+### Bug Fixes
+
+* remove singed key in cd.yml ([8ba8a04](https://github.com/rootachieve/Koraph/commit/8ba8a04ff818faeb77920c3c6da87178311f0680))
+* remove singed key in cd.yml ([bf52944](https://github.com/rootachieve/Koraph/commit/bf529441a7ba71b02e42d103c8815d6964b9e260))
+
 ## [1.0.1](https://github.com/rootachieve/Koraph/compare/v1.0.0...v1.0.1) (2026-02-20)
 
 
