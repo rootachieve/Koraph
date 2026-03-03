@@ -194,6 +194,167 @@ internal fun computeForceLayout(
     )
 }
 
+internal fun relaxLayoutFromCurrentPositions(
+    positions: List<Offset>,
+    edges: List<LayoutEdge>,
+    config: ForceLayoutConfig,
+    nodeRadii: List<Float> = List(positions.size) { ForceLayoutDefaults.defaultNodeRadius },
+    pinnedNodeIds: Set<Int> = emptySet(),
+    iterations: Int = 8,
+): List<Offset> {
+    val nodeCount = positions.size
+    if (nodeCount <= 0) {
+        return emptyList()
+    }
+    val edgeDistanceScale = config.edgeDistanceScale.coerceAtLeast(ForceLayoutDefaults.minimumEdgeDistanceScale)
+    val x = FloatArray(nodeCount) { index ->
+        positions[index].x / edgeDistanceScale
+    }
+    val y = FloatArray(nodeCount) { index ->
+        positions[index].y / edgeDistanceScale
+    }
+    val vx = FloatArray(nodeCount)
+    val vy = FloatArray(nodeCount)
+    val fx = FloatArray(nodeCount)
+    val fy = FloatArray(nodeCount)
+
+    val centerTension = config.centerTension.coerceAtLeast(0f)
+    val repulsionExponent = config.repulsionExponent.coerceIn(0.5f, 4f)
+    val idealEdgeLength = config.baseEdgeLength.coerceAtLeast(ForceLayoutDefaults.minimumBaseEdgeLength)
+    val collisionPadding = config.collisionPadding.coerceAtLeast(0f)
+    val collisionStrength = config.collisionStrength.coerceAtLeast(0f)
+    val maxVelocity = config.maxVelocity.coerceAtLeast(ForceLayoutDefaults.minimumVelocityMagnitude)
+    val degreeAwareEdgeTension = config.degreeAwareEdgeTension
+    val resolvedRadii = FloatArray(nodeCount) { nodeId ->
+        nodeRadii.getOrNull(nodeId)?.coerceAtLeast(ForceLayoutDefaults.minimumNodeRadius)
+            ?: ForceLayoutDefaults.defaultNodeRadius
+    }
+    val degree = IntArray(nodeCount)
+    for (edge in edges) {
+        if (
+            edge.fromId !in 0 until nodeCount ||
+            edge.toId !in 0 until nodeCount ||
+            edge.fromId == edge.toId
+        ) {
+            continue
+        }
+        degree[edge.fromId] += 1
+        degree[edge.toId] += 1
+    }
+
+    repeat(iterations.coerceAtLeast(1)) {
+        fx.fill(0f)
+        fy.fill(0f)
+
+        for (i in 0 until nodeCount) {
+            for (j in i + 1 until nodeCount) {
+                var dx = x[j] - x[i]
+                var dy = y[j] - y[i]
+                var distSq = dx * dx + dy * dy
+                if (distSq < ForceLayoutDefaults.minimumDistanceEpsilon) {
+                    dx = ForceLayoutDefaults.minimumDistanceEpsilon
+                    dy = 0f
+                    distSq = dx * dx
+                }
+
+                val distance = sqrt(distSq)
+                val nx = dx / distance
+                val ny = dy / distance
+                val repulsionDenominator = distance
+                    .toDouble()
+                    .pow(repulsionExponent.toDouble())
+                    .toFloat()
+                    .coerceAtLeast(ForceLayoutDefaults.minimumDistanceEpsilon)
+                val repulsiveForce = config.nodeRepulsion / repulsionDenominator
+
+                fx[i] -= nx * repulsiveForce
+                fy[i] -= ny * repulsiveForce
+                fx[j] += nx * repulsiveForce
+                fy[j] += ny * repulsiveForce
+
+                val minimumDistance = resolvedRadii[i] + resolvedRadii[j] + collisionPadding
+                if (distance < minimumDistance) {
+                    val overlap = (minimumDistance - distance).coerceAtLeast(0f)
+                    val collisionForce = overlap * collisionStrength
+                    fx[i] -= nx * collisionForce
+                    fy[i] -= ny * collisionForce
+                    fx[j] += nx * collisionForce
+                    fy[j] += ny * collisionForce
+                }
+            }
+        }
+
+        for (edge in edges) {
+            val from = edge.fromId
+            val to = edge.toId
+            if (from !in 0 until nodeCount || to !in 0 until nodeCount || from == to) {
+                continue
+            }
+
+            val dx = x[to] - x[from]
+            val dy = y[to] - y[from]
+            val distance = sqrt(max(ForceLayoutDefaults.minimumDistanceEpsilon, dx * dx + dy * dy))
+            val nx = dx / distance
+            val ny = dy / distance
+            val hubDamp = if (degreeAwareEdgeTension) {
+                sqrt(max(degree[from], degree[to]).toFloat()).coerceAtLeast(1f)
+            } else {
+                1f
+            }
+            val attractiveForce = config.edgeTension * (distance - idealEdgeLength) / hubDamp
+
+            fx[from] += nx * attractiveForce
+            fy[from] += ny * attractiveForce
+            fx[to] -= nx * attractiveForce
+            fy[to] -= ny * attractiveForce
+        }
+
+        if (centerTension > 0f) {
+            for (nodeId in 0 until nodeCount) {
+                fx[nodeId] -= x[nodeId] * centerTension
+                fy[nodeId] -= y[nodeId] * centerTension
+            }
+        }
+
+        var maxDelta = 0f
+        for (nodeId in 0 until nodeCount) {
+            if (nodeId in pinnedNodeIds) {
+                vx[nodeId] = 0f
+                vy[nodeId] = 0f
+                continue
+            }
+            vx[nodeId] = ((vx[nodeId] + fx[nodeId]) * config.damping)
+                .coerceIn(-maxVelocity, maxVelocity)
+            vy[nodeId] = ((vy[nodeId] + fy[nodeId]) * config.damping)
+                .coerceIn(-maxVelocity, maxVelocity)
+
+            x[nodeId] += vx[nodeId]
+            y[nodeId] += vy[nodeId]
+
+            val delta = sqrt(vx[nodeId] * vx[nodeId] + vy[nodeId] * vy[nodeId])
+            if (delta > maxDelta) {
+                maxDelta = delta
+            }
+        }
+
+        if (maxDelta < config.convergenceThreshold) {
+            return List(nodeCount) { index ->
+                Offset(
+                    x = x[index] * edgeDistanceScale,
+                    y = y[index] * edgeDistanceScale,
+                )
+            }
+        }
+    }
+
+    return List(nodeCount) { index ->
+        Offset(
+            x = x[index] * edgeDistanceScale,
+            y = y[index] * edgeDistanceScale,
+        )
+    }
+}
+
 internal fun calculateBaseTransform(
     positions: List<Offset>,
     canvasSize: IntSize,

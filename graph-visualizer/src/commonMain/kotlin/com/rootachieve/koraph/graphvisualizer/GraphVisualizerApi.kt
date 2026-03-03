@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 
 @Stable
 data class GraphVisualizerOptions(
@@ -15,6 +17,7 @@ data class GraphVisualizerOptions(
     val showArrows: Boolean = true,
     val enablePanZoom: Boolean = true,
     val enableTapSelection: Boolean = true,
+    val enableNodeDrag: Boolean = true,
     val fitToViewport: Boolean = true,
     val viewportPadding: Float = 48f,
     val clearSelectionOnInit: Boolean = true,
@@ -90,6 +93,8 @@ data class GraphInteractionConfig(
     val maxScale: Float = 4.5f,
     val tapSelectionPadding: Float = 8f,
     val clearSelectionOnBackgroundTap: Boolean = true,
+    val keepLayoutPhysicsOnNodeDrag: Boolean = false,
+    val dragPhysicsIterationsPerStep: Int = 8,
 ) {
     val resolvedMinScale: Float
         get() = minScale.coerceAtLeast(0.01f)
@@ -99,6 +104,9 @@ data class GraphInteractionConfig(
 
     val resolvedTapSelectionPadding: Float
         get() = tapSelectionPadding.coerceAtLeast(0f)
+
+    val resolvedDragPhysicsIterationsPerStep: Int
+        get() = dragPhysicsIterationsPerStep.coerceIn(1, 60)
 }
 
 @Stable
@@ -106,6 +114,9 @@ data class GraphLabelConfig(
     val widthDp: Float = 96f,
     val fontSizeSp: Float = 12f,
     val verticalPaddingDp: Float = 6f,
+    val textStyle: TextStyle = TextStyle.Default,
+    val maxLines: Int = 1,
+    val overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val resolvedWidthDp: Float
         get() = widthDp.coerceAtLeast(24f)
