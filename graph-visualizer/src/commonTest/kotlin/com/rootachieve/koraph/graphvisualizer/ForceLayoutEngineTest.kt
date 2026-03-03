@@ -261,6 +261,68 @@ class ForceLayoutEngineTest {
         assertEquals(1f, transform.baseScale)
     }
 
+    @Test
+    fun calculateBaseTransform_returnsSafeDefaultsForEmptyPositionsOrInvalidCanvas() {
+        // when
+        val emptyPositions = calculateBaseTransform(
+            positions = emptyList(),
+            canvasSize = androidx.compose.ui.unit.IntSize(640, 480),
+        )
+        val invalidCanvas = calculateBaseTransform(
+            positions = listOf(androidx.compose.ui.geometry.Offset(10f, 20f)),
+            canvasSize = androidx.compose.ui.unit.IntSize(0, 480),
+        )
+
+        // then
+        assertEquals(androidx.compose.ui.geometry.Offset.Zero, emptyPositions.worldCenter)
+        assertEquals(androidx.compose.ui.geometry.Offset(320f, 240f), emptyPositions.canvasCenter)
+        assertEquals(1f, emptyPositions.baseScale)
+
+        assertEquals(androidx.compose.ui.geometry.Offset.Zero, invalidCanvas.worldCenter)
+        assertEquals(androidx.compose.ui.geometry.Offset(0f, 240f), invalidCanvas.canvasCenter)
+        assertEquals(1f, invalidCanvas.baseScale)
+    }
+
+    @Test
+    fun relaxLayoutFromCurrentPositions_keepsPinnedNodeAndMovesLinkedNodes() {
+        // given
+        val start = listOf(
+            androidx.compose.ui.geometry.Offset(0f, 0f),
+            androidx.compose.ui.geometry.Offset(420f, 0f),
+        )
+        val edges = listOf(
+            LayoutEdge(0, 1),
+        )
+        val config = ForceLayoutConfig(
+            iterations = 300,
+            nodeRepulsion = 0f,
+            edgeTension = 0.08f,
+            degreeAwareEdgeTension = false,
+            centerTension = 0f,
+            baseEdgeLength = 80f,
+            damping = 0.9f,
+            convergenceThreshold = 0.0001f,
+            edgeDistanceScale = 1f,
+            collisionPadding = 0f,
+            collisionStrength = 0f,
+            randomSeed = 42,
+        )
+
+        // when
+        val relaxed = relaxLayoutFromCurrentPositions(
+            positions = start,
+            edges = edges,
+            config = config,
+            pinnedNodeIds = setOf(0),
+            iterations = 24,
+        )
+
+        // then
+        assertClose(start[0].x, relaxed[0].x)
+        assertClose(start[0].y, relaxed[0].y)
+        assertTrue(relaxed[1].x < start[1].x)
+    }
+
     private fun assertClose(expected: Float, actual: Float, tolerance: Float = 0.0001f) {
         assertTrue(
             abs(expected - actual) <= tolerance,

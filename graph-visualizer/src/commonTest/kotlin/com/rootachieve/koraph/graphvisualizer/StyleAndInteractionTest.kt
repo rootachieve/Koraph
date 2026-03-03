@@ -4,6 +4,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -263,6 +265,28 @@ class StyleAndInteractionTest {
     }
 
     @Test
+    fun findNodeAt_clampsMinimumHitRadiusWhenRadiusProviderReturnsNonPositiveValue() {
+        // given
+        val nodes = listOf(Offset(10f, 10f))
+
+        // when
+        val selected = findNodeAt(
+            pointerPosition = Offset(10.9f, 10f),
+            projectedPositions = nodes,
+            radiusProvider = { -100f },
+        )
+        val notSelected = findNodeAt(
+            pointerPosition = Offset(11.1f, 10f),
+            projectedPositions = nodes,
+            radiusProvider = { 0f },
+        )
+
+        // then
+        assertEquals(0, selected)
+        assertNull(notSelected)
+    }
+
+    @Test
     fun graphVisualizerState_applyTransformUpdatesScaleAndOffset() {
         // given
         val state = GraphVisualizerState(
@@ -363,6 +387,7 @@ class StyleAndInteractionTest {
         val minScale = -3f
         val maxScale = 0f
         val tapSelectionPadding = -2f
+        val dragPhysicsIterationsPerStep = -7
 
         // when
         val config = GraphInteractionConfig(
@@ -370,6 +395,8 @@ class StyleAndInteractionTest {
             maxScale = maxScale,
             tapSelectionPadding = tapSelectionPadding,
             clearSelectionOnBackgroundTap = false,
+            keepLayoutPhysicsOnNodeDrag = true,
+            dragPhysicsIterationsPerStep = dragPhysicsIterationsPerStep,
         )
 
         // then
@@ -377,6 +404,8 @@ class StyleAndInteractionTest {
         assertEquals(0.01f, config.resolvedMaxScale)
         assertEquals(0f, config.resolvedTapSelectionPadding)
         assertFalse(config.clearSelectionOnBackgroundTap)
+        assertTrue(config.keepLayoutPhysicsOnNodeDrag)
+        assertEquals(1, config.resolvedDragPhysicsIterationsPerStep)
     }
 
     @Test
@@ -397,5 +426,8 @@ class StyleAndInteractionTest {
         assertEquals(24f, config.resolvedWidthDp)
         assertEquals(8f, config.resolvedFontSizeSp)
         assertEquals(0f, config.resolvedVerticalPaddingDp)
+        assertEquals(TextStyle.Default, config.textStyle)
+        assertEquals(1, config.maxLines)
+        assertEquals(TextOverflow.Clip, config.overflow)
     }
 }
